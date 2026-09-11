@@ -1,0 +1,1 @@
+"""VISTA Streamlit Search UI."""
