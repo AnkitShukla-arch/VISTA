@@ -1,0 +1,54 @@
+# VISTA — Phase 1 storage services.
+#
+# MinIO is the raw/clean data lake for the VISTA ETL pipeline:
+#   s3://vista-lake/raw/      original phase-one files, uploaded unchanged
+#   s3://vista-lake/clean/    cleaned + deduplicated data (pipeline output)
+#   s3://vista-lake/summaries/  per-source summary reports and data dictionary
+#
+# Ports: API 9000, web console 9001 (Host console.minio.local maps to 9001).
+# Credentials live in .env (see .env.example). Run `bash manage_vista.sh up`.
+
+name: vista-phase1
+
+services:
+  minio:
+    image: minio/minio:latest
+    container_name: vista-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9000/minio/health/live || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # One-shot bucket creator. Creates vista-lake and the raw/clean/summaries
+  # prefixes on first boot, then exits. Safe to re-run.
+  minio-init:
+    image: minio/mc:latest
+    container_name: vista-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      until (mc alias set local http://minio:9000 \"$$MINIO_ROOT_USER\" \"$$MINIO_ROOT_PASSWORD\") do echo 'waiting for minio...' && sleep 2; done;
+      mc mb --ignore-existing local/vista-lake;
+      echo 'Bucket vista-lake ready with raw / clean / summaries prefixes.'
+      "
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+    restart: "no"
+
+volumes:
+  minio_data:

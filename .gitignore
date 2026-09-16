@@ -1,29 +1,14 @@
-# Python
-__pycache__/
-*.py[cod]
-*.pyo
-
-# Virtual environments
-venv/
-.venv/
-env/
-
-# Environment variables / secrets
 .env
-.env.*
-!.env.example
-
-# Databases
-*.db
-*.db-shm
-*.db-wal
-
-# Temporary uploads
-temp_uploads/
-
-# Logs
+__pycache__/
+*.pyc
 *.log
+outputs/
 
-# OS files
-.DS_Store
-Thumbs.db
+# Virtual environment
+.venv/
+
+# Datasets (too large for git - keep local only)
+data/
+
+# Generated pipeline outputs / clean data artifacts
+RESULT/

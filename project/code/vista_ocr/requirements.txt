@@ -1,0 +1,16 @@
+# VISTA OCR module requirements
+#
+# The OCR engine is PaddleOCR (installed together with the paddlepaddle runtime).
+# Everything below is either a hard dependency of that stack or used by the
+# cleaning helpers in this module.
+paddlepaddle>=3.0
+paddleocr>=3.0
+pymupdf>=1.24          # PDF rendering (page images) + embedded-text extraction
+pillow>=10.0
+numpy
+pandas
+pydantic
+
+# Optional extras kept from the original module
+# fastapi / uvicorn    # only needed if the HTTP upload service is re-enabled
+# spacy                # optional NER-based PII masking; masking falls back to regex
