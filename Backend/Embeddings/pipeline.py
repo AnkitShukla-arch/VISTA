@@ -34,7 +34,7 @@ def run_pipeline(
 
     print("=" * 75)
     print("VISTA: EMBEDDINGS & SIMILARITY MATH PIPELINE")
-    print(f"Owner: Arpit Umrao | Model: {model_name}")
+    print(f"Module: Embeddings & Similarity Math Engine | Model: {model_name}")
     print("=" * 75)
 
     # Step 1: Ingestion & Clinical Section Parsing
@@ -93,7 +93,6 @@ def run_pipeline(
     manifest = {
         "project": "VISTA",
         "module": "Embeddings & Similarity Math",
-        "owner": "Arpit Umrao",
         "status": "COMPLETED & VERIFIED",
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"),
         "model_name": model_name,
