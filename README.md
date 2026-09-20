@@ -83,28 +83,17 @@ Doctor ──> Natural Language Query ──> Query Embedding ──> FAISS Box 
 **The end-to-end pipeline:**
 
 1. **Raw Medical Reports** (PDFs, images, text) enter the system
-2. **ETL Pipeline** — cleans files, deduplicates, removes errors *(Owner: Aashita)*
-3. **OCR Processing** — PaddleOCR extracts text from image-based/scanned reports *(Owner: Aditi)*
-4. **Storage** — raw files → **MinIO**; structured metadata → **Neon (PostgreSQL)** warehouse, linked by a stable `document_id` *(Owner: Ankit)*
-5. **Metadata Analytics** — DuckDB analyzes freshness and call-frequency signals *(Owner: Anant)*
-6. **Document Embeddings** — Sentence Transformer (`all-MiniLM-L6-v2`) vectorizes cleaned text *(Owner: Arpit)*
-7. **Cosine Similarity Computation** — pairwise document similarity, normalized and verified *(Owner: Arpit)*
-8. **K-Means Clustering** — groups documents into semantic "boxes" *(Owners: Ansh, Ankit)*
-9. **Box Summary Generation + Embedding** — a short summary is generated per box and embedded *(Owners: Ansh, Ankit, Arpit)*
-10. **FAISS Index** — indexes box summary embeddings only, not every document *(Owners: Ansh, Ankit)*
-11. **Priority Scoring Layer** — `priority_score = freshness + call_frequency + importance` *(Owner: Anant)*
+2. **ETL Pipeline** — cleans files, deduplicates, removes errors
+3. **OCR Processing** — PaddleOCR extracts text from image-based/scanned reports
+4. **Storage** — raw files → **MinIO**; structured metadata → **Neon (PostgreSQL)** warehouse, linked by a stable `document_id`
+5. **Metadata Analytics** — DuckDB analyzes freshness and call-frequency signals
+6. **Document Embeddings** — Sentence Transformer (`all-MiniLM-L6-v2`) vectorizes cleaned text
+7. **Cosine Similarity Computation** — pairwise document similarity, normalized and verified
+8. **K-Means Clustering** — groups documents into semantic "boxes"
+9. **Box Summary Generation + Embedding** — a short summary is generated per box and embedded
+10. **FAISS Index** — indexes box summary embeddings only, not every document
+11. **Priority Scoring Layer** — `priority_score = freshness + call_frequency + importance`
 12. **User NLP Query** → embedded → matched to nearest box via FAISS → **File Selection Within Matched Box** using the priority score → **Ranked Result Returned to User**
-
-### Per-role breakdown
-
-| Owner | Focus | Key Deliverables |
-|---|---|---|
-| **Aashita** | ETL Pipeline | Raw reports → duplicate detection → error removal → cleaned file batch |
-| **Aditi** | OCR & Text Extraction | PaddleOCR on scanned reports, normalized text output |
-| **Ankit** | Storage & Data Warehouse | MinIO raw storage + Neon structured warehouse, linked by `document_id` |
-| **Anant** | Metadata Analytics & Priority Scoring | DuckDB analytics → freshness/frequency/importance → priority score |
-| **Arpit** | Embeddings & Similarity Math | Sentence Transformer → document embeddings → cosine similarity matrix, handed off for clustering |
-| **Ansh** | Clustering & Box Embedding Pipeline | K-Means boxes → box summaries → box embeddings → FAISS query matching |
 
 ---
 
@@ -122,24 +111,65 @@ $$\cos(\theta) = \frac{A \cdot B}{\Vert A \Vert \Vert B \Vert}$$
 | **0.0** | Completely unrelated records |
 | **-1.0** | Semantically opposite concepts |
 
-This similarity matrix is what feeds K-Means clustering when building the semantic boxes.
+---
+
+## 🛠️ Phase-1 ETL, OCR & Storage Pipeline
+
+### 1. Storage Layout in MinIO (`vista-lake`)
+```bash
+bash manage_vista.sh up          # start MinIO + create vista-lake bucket
+```
+
+Layered layout in `s3://vista-lake/`:
+- `raw/` — original phase-one files, uploaded unchanged (18,826 objects)
+- `clean/` — the full RESULT corpus: 10 clean parquets, `ocr_text/*.txt`, `_manifest.json`
+- `summaries/` — per-source profiles + `phase1_summary.md` + `phase1_clean_summary.md`
+- `reports/` — pipeline run reports
+
+### 2. Running Phase-1 Ingestion & OCR
+```bash
+# 1. ETL: raw -> clean -> summaries -> MinIO
+python project/code/run_phase1.py
+
+# 2. PaddleOCR over the report PDFs (resumable; cached in RESULT/clean_data/ocr_text/)
+cd project/code && python -m ocr_reports
+
+# 3. Assemble the RESULT folder for phase 2
+python project/code/build_result.py
+
+# 4. Sync the finished RESULT corpus back into the MinIO clean layer
+python project/code/sync_result_to_minio.py
+```
+
+### 3. RESULT Folder (Input for Embeddings & Clustering)
+`RESULT/clean_data/` contains every cleaned source produced by the pipeline:
+- `*.parquet` — one typed, deduplicated dataset per source
+- `ocr_text/*.txt` — full PaddleOCR text per parsed report PDF/DOCX
+- `_manifest.json` — per-source cleaning + OCR statistics
+- `phase1_clean_summary.md` — human-readable roll-up
+
+### 4. OCR Engine Details
+`project/code/vista_ocr` uses **PaddleOCR (PP-OCRv5/v6 models)** for images and scanned PDFs; digital PDFs use the embedded text layer via PyMuPDF.
 
 ---
 
-## ⚙️ Technology Stack
+## ⚡ Embeddings, Clustering & Search Pipeline
 
-| Layer | Technology | Purpose |
-|---|---|---|
-| 🐍 **Programming** | Python | Core analytical engine & data processing |
-| 🔎 **OCR** | PaddleOCR (PP-OCRv5/v6) | Text extraction from scanned/image-based reports |
-| 🧠 **AI & Embedding** | Sentence Transformers (`all-MiniLM-L6-v2`) | Translates cleaned text into 384-D vectors |
-| 📐 **Similarity & Clustering** | Cosine Similarity + K-Means | Groups documents into semantic "boxes" |
-| ⚡ **Vector Search** | FAISS | Indexes box summary embeddings for fast retrieval |
-| 📊 **Metadata Analytics** | DuckDB | Freshness & call-frequency analysis feeding priority scoring |
-| ☁️ **Object Store** | MinIO | Persistent unstructured raw report storage |
-| 📦 **Data Warehouse** | Neon (PostgreSQL) | Structured metadata warehouse, linked via `document_id` |
-| 📈 **Frontend UI** | Streamlit | Real-time diagnostic analytical dashboard |
-| 🐳 **Deployment** | Docker | Containerized configuration and microservice scaling |
+### 1. Embeddings & Cosine Similarity Math
+```bash
+# Vectorize reports into 384-D dense vectors and compute similarity matrix:
+python Backend/Embeddings/pipeline.py --sample-size 50
+```
+
+### 2. Verify Output Correctness
+```bash
+python tests/verify_output.py
+```
+
+### 3. Frontend Search Dashboard
+```bash
+streamlit run Frontend/Streamlit/app.py
+```
 
 ---
 
@@ -148,10 +178,10 @@ This similarity matrix is what feeds K-Means clustering when building the semant
 ```text
 VISTA
 ├── Backend/
-│   ├── Embeddings/           # Sentence Transformer + cosine similarity math (Arpit)
-│   ├── Clustering/           # K-Means box logic, box summaries, FAISS index (Ansh, Ankit)
-│   ├── ETL/                  # Cleaning, deduplication, error removal (Aashita)
-│   └── OCR/                  # Document parsing and extraction (Aditi)
+│   ├── Embeddings/           # Sentence Transformer + cosine similarity math
+│   ├── Clustering/           # K-Means box logic, box summaries, FAISS index
+│   ├── ETL/                  # Cleaning, deduplication, error removal
+│   └── OCR/                  # Document parsing and extraction
 ├── project/code/
 │   ├── vista_ocr/            # Integrated PaddleOCR extraction engine
 │   ├── vista_pipeline/       # Layered ETL pipeline (ASTRA-style, MinIO-backed)
@@ -159,11 +189,14 @@ VISTA
 │   ├── ocr_reports.py        # Resumable PaddleOCR runner for report PDFs
 │   └── build_result.py       # Assembles RESULT/clean_data/
 ├── Database/
-│   ├── MinIO/                # Raw file object storage (Ankit)
-│   ├── Neon/                 # Structured metadata warehouse (Ankit)
-│   └── DuckDB/               # Metadata analytics + priority scoring (Anant)
+│   ├── MinIO/                # Raw file object storage
+│   ├── Neon/                 # Structured metadata warehouse
+│   └── DuckDB/               # Metadata analytics + priority scoring
 ├── Frontend/
 │   └── Streamlit/            # UI components and diagnostic dashboard
+├── info/
+│   ├── architecture.png      # System architecture diagram
+│   └── DOCUMENTATION.md      # Comprehensive technical documentation
 ├── docs/                     # Academic synopses, presentation slide decks, and reports
 ├── RESULT/clean_data/        # Clean corpus for embedding and vector search
 └── tests/                    # Unit and integration test suites
@@ -171,52 +204,11 @@ VISTA
 
 ---
 
-## 🚀 Running the Project
-
-### 1. Start Supporting Services (MinIO)
-```bash
-# Using helper script
-bash manage_vista.sh up
-
-# Or using docker-compose
-docker-compose up -d
-```
-
-### 2. Run Phase 1 Ingestion & OCR Pipeline
-```bash
-# 1. ETL: raw -> clean -> summaries -> MinIO
-python project/code/run_phase1.py
-
-# 2. PaddleOCR over report PDFs
-python project/code/ocr_reports.py
-
-# 3. Assemble clean RESULT dataset
-python project/code/build_result.py
-```
-
-### 3. Run Embeddings & Similarity Math Pipeline (Arpit's Module)
-```bash
-# Generate 384-D embeddings, cosine similarity matrix, and handoff bundle
-python Backend/Embeddings/pipeline.py --sample-size 50
-```
-
-### 4. Run Frontend Search Dashboard
-```bash
-streamlit run Frontend/Streamlit/app.py
-```
-
----
-
 ## 🎯 Accuracy Targets & Evaluation Benchmarks
 
-To ensure clinical viability, VISTA evaluates accuracy across three key layers:
-
-1. **Semantic Retrieval Accuracy Target: `95%`**
-   * Measured via **Top-3 Retrieval Accuracy**: A clinical query for a condition (*e.g., "acute myocardial infarction"*) must return a document from the correct medical department in the top 3 results at least **95%** of the time.
-2. **Specialty Separability Ratio Target: `> 2.0x` (Achieved: `4.63x`)**
-   * Intra-specialty cosine similarity must be at least **2× higher** than inter-specialty similarity to ensure clear geometric cluster boundaries.
-3. **Retrieval Latency Target: `< 2.0 seconds`**
-   * End-to-end response time from user query submission to ranked report display.
+1. **Semantic Retrieval Accuracy Target: `95%`** (Top-3 Retrieval Accuracy).
+2. **Specialty Separability Ratio Target: `> 2.0x` (Achieved: `4.63x`)**.
+3. **Retrieval Latency Target: `< 2.0 seconds`**.
 
 ---
 
