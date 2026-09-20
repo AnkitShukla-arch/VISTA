@@ -1,6 +1,5 @@
 """
 Pairwise Cosine Similarity Matrix and Vector Math Utilities.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
 
 Enhancements:
 - Memory-safe Tiled / Block-wise Matrix Multiplication (prevents OOM on large datasets).

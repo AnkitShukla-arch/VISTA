@@ -1,6 +1,5 @@
 """
 Document Extraction Pipeline (PDF / DOCX / Image OCR).
-Owner: Aditi (OCR & Text Extraction Engineer)
 """
 from pathlib import Path
 from typing import Optional

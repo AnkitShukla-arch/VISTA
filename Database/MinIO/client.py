@@ -1,6 +1,5 @@
 """
 MinIO Object Storage Client Wrapper.
-Owner: Ankit Shukla (Storage & Data Warehouse Engineer)
 """
 from pathlib import Path
 from typing import Optional

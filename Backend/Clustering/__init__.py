@@ -1,5 +1,5 @@
 """
-Clustering & Box Index Pipeline (Owners: Ansh Gaur & Ankit Shukla)
+Clustering & Box Index Pipeline
 Responsible for K-Means box generation, box summary embeddings, and FAISS indexing.
 """
 from Backend.Clustering.kmeans_boxes import BoxClusterer

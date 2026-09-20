@@ -1,6 +1,5 @@
 """
 Clinical Section Parser and Medical Data Loader.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
 
 Enhancement: Section-aware clinical text extraction that prioritizes high-salience
 diagnostic sections (Chief Complaint, Impression, Assessment, Diagnosis) before

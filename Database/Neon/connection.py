@@ -1,6 +1,5 @@
 """
 Neon / PostgreSQL Data Warehouse Connection and Schema.
-Owner: Ankit Shukla (Storage & Data Warehouse Engineer)
 """
 from typing import Optional, Any, Dict, List
 

@@ -1,6 +1,5 @@
 """
 FAISS Vector Index for Box Summary Embeddings.
-Owners: Ansh Gaur & Ankit Shukla
 Stores and searches across cluster box summary vectors.
 """
 from pathlib import Path

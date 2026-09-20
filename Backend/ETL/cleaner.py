@@ -1,6 +1,5 @@
 """
 Clinical Text Cleaning and Normalization Pipeline.
-Owner: Aashita (ETL Engineer)
 """
 import re
 import hashlib

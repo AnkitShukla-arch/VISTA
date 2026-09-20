@@ -1,5 +1,5 @@
 """
-Neon (PostgreSQL) Warehouse Adapter (Owner: Ankit Shukla)
+Neon (PostgreSQL) Warehouse Adapter
 Responsible for relational clinical schema and metadata warehouse operations.
 """
 from Database.Neon.connection import NeonWarehouseManager

@@ -1,6 +1,5 @@
 """
 Integration Test & Benchmark for Phase 2: Vector Embedder.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
 """
 import sys
 from pathlib import Path

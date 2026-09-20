@@ -53,12 +53,12 @@ class Settings:
         "DUCKDB_PATH", "Database/DuckDB/data/metadata.duckdb"
     )
 
-    # Embeddings & Sentence Transformers (Arpit)
+    # Embeddings & Sentence Transformers
     EMBEDDING_MODEL_NAME: str = os.getenv("EMBEDDING_MODEL_NAME", "all-MiniLM-L6-v2")
     EMBEDDING_DEVICE: str = os.getenv("EMBEDDING_DEVICE", "cpu")
     EMBEDDING_BATCH_SIZE: int = int(os.getenv("EMBEDDING_BATCH_SIZE", "64"))
 
-    # FAISS Clustering & Boxes (Ansh & Ankit)
+    # FAISS Clustering & Boxes
     FAISS_INDEX_PATH: Path = BASE_DIR / os.getenv(
         "FAISS_INDEX_PATH", "Backend/Clustering/data/box_index.faiss"
     )

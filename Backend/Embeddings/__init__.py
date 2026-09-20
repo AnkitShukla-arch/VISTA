@@ -1,5 +1,5 @@
 """
-Embeddings and Similarity Math Module (Owner: Arpit Umrao)
+Embeddings and Similarity Math Module
 Responsible for clinical text vectorization using Sentence Transformers (all-MiniLM-L6-v2),
 section-aware clinical parsing, and optimized pairwise cosine similarity matrix computation.
 """

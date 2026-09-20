@@ -1,6 +1,5 @@
 """
 Integration Test & Benchmark for Phase 3: Scalable Cosine Similarity Engine.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
 """
 import sys
 from pathlib import Path

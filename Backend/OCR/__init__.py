@@ -1,5 +1,5 @@
 """
-OCR & Text Extraction Pipeline (Owner: Aditi)
+OCR & Text Extraction Pipeline
 Responsible for extracting text from scanned PDF and DOCX medical reports.
 """
 from Backend.OCR.extractor import DocumentExtractor

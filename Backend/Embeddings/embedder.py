@@ -1,6 +1,5 @@
 """
 Medical Report Embedder using Sentence Transformers.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
 
 Enhancements:
 - Auto GPU/CUDA device selection with graceful CPU fallback.

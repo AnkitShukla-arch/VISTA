@@ -1,6 +1,5 @@
 """
 Automated Verification & Correctness Checker for VISTA Embeddings & Similarity Output.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
 
 Run this script anytime to verify that your generated outputs are mathematically
 sound, semantically accurate, and clinically valid:

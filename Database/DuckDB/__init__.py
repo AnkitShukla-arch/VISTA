@@ -1,5 +1,5 @@
 """
-DuckDB Analytics & Priority Scoring Engine (Owner: Anant Dubey)
+DuckDB Analytics & Priority Scoring Engine
 Calculates multi-factor priority score:
     priority_score = w_freshness * freshness + w_freq * call_frequency + w_imp * importance
 """

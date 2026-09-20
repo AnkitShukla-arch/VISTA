@@ -1,6 +1,5 @@
 """
 K-Means Box Clustering Engine.
-Owners: Ansh Gaur (Project Lead) & Ankit Shukla
 Groups clinical reports into semantic "boxes" based on document embeddings.
 """
 from typing import Dict, List, Any, Optional

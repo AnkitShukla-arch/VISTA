@@ -1,6 +1,5 @@
 """
 DuckDB Priority Scoring Engine.
-Owner: Anant Dubey (Metadata Analytics & Priority Scoring)
 Computes:
     priority_score = (w_f * freshness_score) + (w_c * frequency_score) + (w_i * importance_score)
 """

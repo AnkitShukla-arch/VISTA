@@ -1,6 +1,5 @@
 """
-Master End-to-End Pipeline for Arpit Umrao's Module: Embeddings & Similarity Math.
-Owner: Arpit Umrao (Embeddings & Similarity Math Engineer)
+Master End-to-End Pipeline: Embeddings & Similarity Math.
 
 Usage:
     python Backend/Embeddings/pipeline.py [--sample-size N] [--output-dir PATH]

@@ -1,5 +1,5 @@
 """
-ETL Pipeline Module (Owner: Aashita)
+ETL Pipeline Module
 Responsible for raw report ingestion, deduplication, and clinical text cleaning.
 """
 from Backend.ETL.cleaner import MedicalTextCleaner
