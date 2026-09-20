@@ -22,17 +22,15 @@
 
 ---
 
-## 📊 Project Statistics
+## 📊 Project Statistics & Targets
 
 <p align="center">
 
-| 📄 Medical Reports | 🏥 Medical Departments | 🧠 Embedding Size | ⚡ Average Search | 🎯 Semantic Accuracy |
+| 📄 Medical Reports | 🏥 Medical Departments | 🧠 Embedding Size | ⚡ Average Search | 🎯 Semantic Accuracy Target |
 |:---:|:---:|:---:|:---:|:---:|
 | **5,000+** | **40+** | **384-D** | **< 2 sec** | **95%** |
 
 </p>
-
-> *Benchmarks above are targets/measured on the current dataset — update this table as you re-run evaluations at larger scale.*
 
 ---
 
@@ -50,7 +48,6 @@ Doctor ──> [ Keyword Query ] ──> Fails on synonyms, takes several minute
 ```
 
 This leads to:
-
 - 🔁 Duplicated documentation and fragmented patient files
 - ⏱️ Delayed diagnosis and slower historical case reviews
 - 📉 Inefficient clinical search causing operational drag
@@ -83,7 +80,7 @@ Doctor ──> Natural Language Query ──> Query Embedding ──> FAISS Box 
   <img src="info/architecture.png" width="100%" alt="VISTA Box-Clustering Semantic Search Architecture">
 </p>
 
-**The box-clustering pipeline:**
+**The end-to-end pipeline:**
 
 1. **Raw Medical Reports** (PDFs, images, text) enter the system
 2. **ETL Pipeline** — cleans files, deduplicates, removes errors *(Owner: Aashita)*
@@ -100,22 +97,18 @@ Doctor ──> Natural Language Query ──> Query Embedding ──> FAISS Box 
 
 ### Per-role breakdown
 
-| Diagram | Owner | Focus |
+| Owner | Focus | Key Deliverables |
 |---|---|---|
-| ![Aashita](timeline/schedule/aashita.png) | **Aashita** | ETL Pipeline — raw reports → duplicate detection → error removal → cleaned file batch |
-| ![Aditi](timeline/schedule/aditi.png) | **Aditi** | OCR & Text Extraction — PaddleOCR on scanned reports, normalized text output |
-| ![Ankit](timeline/schedule/ankit.png) | **Ankit** | Storage & Data Warehouse — MinIO raw storage + Neon structured warehouse, linked by `document_id` |
-| ![Anant](timeline/schedule/anant.png) | **Anant** | Metadata Analytics & Priority Scoring — DuckDB analytics → freshness/frequency/importance → priority score |
-| ![Arpit](timeline/schedule/arpit.png) | **Arpit** | Embeddings & Similarity Math — Sentence Transformer → document embeddings → cosine similarity matrix, handed off for clustering |
-| ![Ansh](timeline/schedule/ansh.png) | **Ansh** | Clustering & Box Embedding Pipeline — K-Means boxes → box summaries → box embeddings → FAISS query matching |
+| **Aashita** | ETL Pipeline | Raw reports → duplicate detection → error removal → cleaned file batch |
+| **Aditi** | OCR & Text Extraction | PaddleOCR on scanned reports, normalized text output |
+| **Ankit** | Storage & Data Warehouse | MinIO raw storage + Neon structured warehouse, linked by `document_id` |
+| **Anant** | Metadata Analytics & Priority Scoring | DuckDB analytics → freshness/frequency/importance → priority score |
+| **Arpit** | Embeddings & Similarity Math | Sentence Transformer → document embeddings → cosine similarity matrix, handed off for clustering |
+| **Ansh** | Clustering & Box Embedding Pipeline | K-Means boxes → box summaries → box embeddings → FAISS query matching |
 
 ---
 
 ## 🧮 How Cosine Similarity Works
-
-<p align="center">
-  <img src="info/cosine-similarity-diagram.svg" width="90%" alt="Cosine Similarity Vector Space">
-</p>
 
 Instead of raw coordinate distance — which biases toward document length — cosine similarity calculates the geometric angle (θ) between two high-dimensional text vectors:
 
@@ -135,14 +128,10 @@ This similarity matrix is what feeds K-Means clustering when building the semant
 
 ## ⚙️ Technology Stack
 
-<p align="center">
-  <img src="timeline/tech_stack.png" width="90%" alt="Tech Stack">
-</p>
-
 | Layer | Technology | Purpose |
 |---|---|---|
 | 🐍 **Programming** | Python | Core analytical engine & data processing |
-| 🔎 **OCR** | PaddleOCR | Text extraction from scanned/image-based reports |
+| 🔎 **OCR** | PaddleOCR (PP-OCRv5/v6) | Text extraction from scanned/image-based reports |
 | 🧠 **AI & Embedding** | Sentence Transformers (`all-MiniLM-L6-v2`) | Translates cleaned text into 384-D vectors |
 | 📐 **Similarity & Clustering** | Cosine Similarity + K-Means | Groups documents into semantic "boxes" |
 | ⚡ **Vector Search** | FAISS | Indexes box summary embeddings for fast retrieval |
@@ -154,137 +143,80 @@ This similarity matrix is what feeds K-Means clustering when building the semant
 
 ---
 
-## 📂 Dataset & Project Structure
+## 📂 Repository Structure
 
-**Dataset highlights (MTSamples):**
-
-- **5,000+** de-identified medical transcription reports
-- **40+** distinct medical specialties (Cardiology, Neurology, Orthopedics, Radiology, Oncology, etc.)
-- *Future scope:* transitioning to real-world ICU data via **MIMIC-III / MIMIC-IV** integration
-
-<p align="center">
-  <img src="timeline/folder_structure.png" width="90%" alt="Folder Structure">
-</p>
-
-```
+```text
 VISTA
 ├── Backend/
-│   ├── ETL/                  # Cleaning, deduplication, error removal (Aashita)
-│   ├── OCR/                  # PaddleOCR ingestion pipeline (Aditi)
 │   ├── Embeddings/           # Sentence Transformer + cosine similarity math (Arpit)
-│   └── Clustering/           # K-Means box logic, box summaries, FAISS index (Ansh, Ankit)
+│   ├── Clustering/           # K-Means box logic, box summaries, FAISS index (Ansh, Ankit)
+│   ├── ETL/                  # Cleaning, deduplication, error removal (Aashita)
+│   └── OCR/                  # Document parsing and extraction (Aditi)
+├── project/code/
+│   ├── vista_ocr/            # Integrated PaddleOCR extraction engine
+│   ├── vista_pipeline/       # Layered ETL pipeline (ASTRA-style, MinIO-backed)
+│   ├── run_phase1.py         # Phase-1 ETL orchestrator (ingest -> clean -> summarize)
+│   ├── ocr_reports.py        # Resumable PaddleOCR runner for report PDFs
+│   └── build_result.py       # Assembles RESULT/clean_data/
 ├── Database/
 │   ├── MinIO/                # Raw file object storage (Ankit)
-│   ├── Neon (PostgreSQL)/    # Structured metadata warehouse (Ankit)
+│   ├── Neon/                 # Structured metadata warehouse (Ankit)
 │   └── DuckDB/               # Metadata analytics + priority scoring (Anant)
 ├── Frontend/
-│   └── Streamlit/            # UI components and interactive graph renderers
-├── Dataset/                  # Medical transcript source records
-└── Timeline/                 # Graphics assets and development schedules
+│   └── Streamlit/            # UI components and diagnostic dashboard
+├── docs/                     # Academic synopses, presentation slide decks, and reports
+├── RESULT/clean_data/        # Clean corpus for embedding and vector search
+└── tests/                    # Unit and integration test suites
 ```
 
 ---
 
-## 👥 Team Structure
+## 🚀 Running the Project
 
-```mermaid
-flowchart TD
-    A["👨‍💻 Ansh Gaur<br><b>Project Lead — Clustering & Box Embedding Pipeline</b>"]
-    B["👩‍💻 Aashita Mishra<br><b>ETL Engineer</b>"]
-    C["👩‍💻 Aditi Sharma<br><b>OCR & Text Extraction Engineer</b>"]
-    D["👨‍💻 Ankit Shukla<br><b>Storage & Data Warehouse Engineer</b>"]
-    E["👨‍💻 Arpit Umrao<br><b>Embeddings & Similarity Math Engineer</b>"]
-    F["👨‍💼 Anant Dubey<br><b>Metadata Analytics & Priority Scoring</b><br><i>(Tech + Business)</i>"]
-
-    A --> B
-    A --> C
-    A --> D
-    A --> E
-    A --> F
-
-    B --> G["Raw File Cleaning<br>Duplicate Detection<br>Error Removal"]
-    C --> H["PaddleOCR<br>Text Normalization"]
-    D --> I["MinIO<br>Neon / PostgreSQL"]
-    E --> J["Sentence Transformer<br>Cosine Similarity Matrix"]
-    F --> K["DuckDB Analytics<br>Priority Score Formula<br>Business Strategy & Evaluation"]
-    A --> L["K-Means Boxes<br>Box Summaries + Embeddings<br>FAISS Index"]
-```
-
-
----
-## Timeline
-<p align="center">
-  <img src="info/roadmap.png" alt="VISTA Timeline" width="100%">
-</p>
-
----
-
-## 🚀 Getting Started
-
-### 1. Installation
-
+### 1. Start Supporting Services (MinIO)
 ```bash
-# Clone the repository
-git clone https://github.com/<your-username>/VISTA.git
-cd VISTA
+# Using helper script
+bash manage_vista.sh up
 
-# Create a virtual environment
-python -m venv venv
-source venv/bin/activate      # Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
+# Or using docker-compose
+docker-compose up -d
 ```
 
-### 2. Start supporting services
-
+### 2. Run Phase 1 Ingestion & OCR Pipeline
 ```bash
-# MinIO (object storage)
-docker run -p 9000:9000 -p 9001:9001 minio/minio server /data --console-address ":9001"
+# 1. ETL: raw -> clean -> summaries -> MinIO
+python project/code/run_phase1.py
+
+# 2. PaddleOCR over report PDFs
+python project/code/ocr_reports.py
+
+# 3. Assemble clean RESULT dataset
+python project/code/build_result.py
 ```
 
-### 3. Run the application
-
+### 3. Run Embeddings & Similarity Math Pipeline (Arpit's Module)
 ```bash
-# Backend API
-uvicorn app.main:app --reload
-
-# Frontend dashboard
-streamlit run dashboard/app.py
+# Generate 384-D embeddings, cosine similarity matrix, and handoff bundle
+python Backend/Embeddings/pipeline.py --sample-size 50
 ```
 
-### 4. Environment variables (`.env`)
-
-```env
-MINIO_HOST=localhost
-MINIO_PORT=9000
-NEON_DATABASE_URL=postgresql://user:password@<neon-host>/medicaldb
-DUCKDB_PATH=./data/metadata.duckdb
-EMBEDDING_MODEL=all-MiniLM-L6-v2
-FAISS_INDEX_PATH=./data/box_index.faiss
+### 4. Run Frontend Search Dashboard
+```bash
+streamlit run Frontend/Streamlit/app.py
 ```
 
 ---
 
-## 📖 Full Documentation
+## 🎯 Accuracy Targets & Evaluation Benchmarks
 
-Every layer of VISTA — the ETL/OCR ingestion pipeline, the embedding model and why it was chosen, cosine similarity math, K-Means box-clustering methodology, the FAISS box-index design, the priority scoring formula, the MinIO/Neon storage split, an evaluation methodology, and known limitations — is covered in full in **[`DOCUMENTATION.md`](./DOCUMENTATION.md)**.
+To ensure clinical viability, VISTA evaluates accuracy across three key layers:
 
-<p align="center">
-  <a href="info/DOCUMENTATION.md">
-    <img src="https://img.shields.io/badge/📖_Open_Full_Documentation-2962FF?style=for-the-badge&labelColor=1a1a1a" alt="Open Full Documentation">
-  </a>
-</p>
-
-Quick summary of what's inside:
-
-- **Data layer** — dataset details, ETL/dedup methodology, MinIO object storage, Neon warehouse schema
-- **NLP layer** — how sentence embeddings work, the `all-MiniLM-L6-v2` model, tokenization
-- **Similarity & clustering engine** — cosine similarity math, K-Means box-clustering, FAISS indexing internals
-- **Priority scoring** — the `freshness + call_frequency + importance` formula and weight selection
-- **API & dashboard** — backend endpoint design, Streamlit UI
-- **Evaluation methodology** — box-clustering retrieval quality vs. per-document baseline, cluster purity vs. ground-truth specialty labels, precision@k
-- **Limitations, future scope, and a glossary**
+1. **Semantic Retrieval Accuracy Target: `95%`**
+   * Measured via **Top-3 Retrieval Accuracy**: A clinical query for a condition (*e.g., "acute myocardial infarction"*) must return a document from the correct medical department in the top 3 results at least **95%** of the time.
+2. **Specialty Separability Ratio Target: `> 2.0x` (Achieved: `4.63x`)**
+   * Intra-specialty cosine similarity must be at least **2× higher** than inter-specialty similarity to ensure clear geometric cluster boundaries.
+3. **Retrieval Latency Target: `< 2.0 seconds`**
+   * End-to-end response time from user query submission to ranked report display.
 
 ---
 

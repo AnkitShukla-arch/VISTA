@@ -2,9 +2,13 @@
 __pycache__/
 *.py[cod]
 *$py.class
+*.pyc
 
 # C extensions
 *.so
+
+# Logs
+*.log
 
 # Distribution / packaging
 .Python
@@ -36,15 +40,16 @@ ENV/
 .env
 *.local.env
 
-# Datasets and Raw Data Lake Archives
+# Datasets and Raw Data Lake Archives (too large for git - keep local only)
 phase1_dataset/
 phase1_dataset.zip
+data/
 *.zip
 *.tar.gz
 *.7z
 *.rar
-data/cache/
-data/processed/
+outputs/
+RESULT/
 
 # Database & Vector indices
 *.duckdb
