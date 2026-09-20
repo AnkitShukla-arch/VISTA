@@ -1,16 +1,75 @@
-# Byte-compiled / optimized / DLL files
+# =============================================================================
+# VISTA .gitignore - Comprehensive Exclusion Rules
+# =============================================================================
+
+# --- Byte-compiled / optimized / DLL files ---
 __pycache__/
 *.py[cod]
 *$py.class
 *.pyc
-
-# C extensions
 *.so
 
-# Logs
-*.log
+# --- Virtual environments ---
+venv/
+env/
+ENV/
+.venv/
+env.bak/
+venv.bak/
 
-# Distribution / packaging
+# --- Environment variables & secrets ---
+.env
+.env.*
+*.local.env
+!*.env.example
+
+# --- Logs & Telemetry ---
+*.log
+*.log.*
+logs/
+
+# --- Datasets & Raw Data Lake Archives (Keep Local Only) ---
+phase1_dataset/
+phase1_dataset.zip
+data/
+outputs/
+RESULT/
+*.csv
+*.tsv
+*.xlsx
+*.parquet
+*.zip
+*.tar.gz
+*.tar
+*.7z
+*.rar
+*.gz
+
+# --- Vector Embeddings & Model Weights ---
+*.npy
+*.npz
+*.pt
+*.pth
+*.bin
+*.onnx
+*.safetensors
+models/
+hf_cache/
+.cache/
+
+# --- Database & Vector indices ---
+*.duckdb
+*.duckdb.wal
+*.faiss
+*.index
+*.db
+*.sqlite
+*.sqlite3
+
+# --- MinIO & Object Storage Local Dirs ---
+minio_data/
+
+# --- Distribution & Packaging ---
 .Python
 build/
 develop-eggs/
@@ -30,42 +89,28 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual environments
-venv/
-env/
-ENV/
-.venv/
+# --- Testing & Coverage ---
+.coverage
+.coverage.*
+.pytest_cache/
+htmlcov/
+scratch/
 
-# Environment variables & secrets
-.env
-*.local.env
-
-# Datasets and Raw Data Lake Archives (too large for git - keep local only)
-phase1_dataset/
-phase1_dataset.zip
-data/
-*.zip
-*.tar.gz
-*.7z
-*.rar
-outputs/
-RESULT/
-
-# Database & Vector indices
-*.duckdb
-*.duckdb.wal
-*.faiss
-*.index
-
-# MinIO local data directory if run locally
-minio_data/
-
-# IDE files
+# --- IDE & Editor Files ---
 .vscode/
 .idea/
 *.swp
 *.swo
+*~
+.project
+.pydevproject
 
-# OS files
+# --- OS Specific Files ---
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+[Dd]esktop.ini
