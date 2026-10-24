@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import re
@@ -36,6 +37,10 @@ _jobs_lock = threading.RLock()
 _pipeline_lock = threading.Lock()
 _jobs: dict[str, dict[str, Any]] = {}
 _records: list[dict[str, Any]] = []
+_dataset_import: dict[str, Any] = {
+    "status": "idle", "processed": 0, "total": 0, "record_count": 0,
+    "filename": "phase1_selection.txt", "error": None,
+}
 
 
 def _now() -> str:
@@ -65,7 +70,7 @@ def _save_job(job: dict[str, Any]) -> None:
 
 
 def _load_saved_state() -> None:
-    global _records
+    global _records, _dataset_import
     try:
         payload = json.loads(REGISTRY_PATH.read_text(encoding="utf-8"))
         _records = payload if isinstance(payload, list) else []
@@ -78,6 +83,12 @@ def _load_saved_state() -> None:
                 _jobs[job["job_id"]] = job
         except (OSError, json.JSONDecodeError):
             continue
+    try:
+        saved_import = json.loads((JOB_ROOT / "phase2_dataset_import.json").read_text(encoding="utf-8"))
+        if isinstance(saved_import, dict):
+            _dataset_import.update(saved_import)
+    except (OSError, json.JSONDecodeError):
+        pass
 
 
 _load_saved_state()
@@ -116,6 +127,162 @@ def get_job(job_id: str) -> dict[str, Any] | None:
     with _jobs_lock:
         job = _jobs.get(job_id)
         return _public_job(job) if job else None
+
+
+def get_dataset_import() -> dict[str, Any]:
+    with _jobs_lock:
+        return _public_job(_dataset_import)
+
+
+def start_dataset_import() -> dict[str, Any]:
+    """Import the checked-in Phase 2 selection manifest from local disk."""
+    global _dataset_import
+    with _jobs_lock:
+        if _dataset_import.get("status") in {"queued", "running"}:
+            return _public_job(_dataset_import)
+        if _dataset_import.get("status") == "complete":
+            return _public_job(_dataset_import)
+        manifest = ROOT / "phase 2_dataset" / "data" / "processed" / "phase1_selection.txt"
+        if not manifest.is_file():
+            raise ValueError("The Phase 2 selection manifest was not found in phase 2_dataset/data/processed.")
+        entries = [line.strip() for line in manifest.read_text(encoding="utf-8-sig").splitlines() if line.strip()]
+        selected_root = manifest.parent / "phase1_dataset"
+        valid_entries = [entry for entry in entries if (selected_root / entry).is_file() and (selected_root / entry).suffix.lower() in ALLOWED_EXTENSIONS]
+        if not valid_entries:
+            raise ValueError("The Phase 2 selection manifest contains no readable report files.")
+        _dataset_import = {
+            "status": "queued", "processed": 0, "total": len(valid_entries), "record_count": 0,
+            "filename": "phase1_selection.txt", "error": None,
+        }
+        worker = threading.Thread(target=_run_dataset_import, args=(selected_root, valid_entries), daemon=True, name="vista-phase2-import")
+        worker.start()
+        return _public_job(_dataset_import)
+
+
+def _set_dataset_import(**updates: Any) -> None:
+    with _jobs_lock:
+        _dataset_import.update(updates)
+        _write_json_atomic(JOB_ROOT / "phase2_dataset_import.json", _dataset_import)
+
+
+def _run_dataset_import(selected_root: Path, entries: list[str]) -> None:
+    """Extract the local selection manifest and embed it in moderate batches."""
+    global _dataset_import
+    from Backend.ETL.cleaner import MedicalTextCleaner
+    from Backend.Embeddings.clinical_parser import ClinicalSectionParser
+    from Backend.api import _engine
+
+    _set_dataset_import(status="running", processed=0, record_count=0, started_at=_now())
+    try:
+        with _pipeline_lock:
+            engine = _engine()
+            existing_ids = {str(row.get("doc_id")) for row in uploaded_records()}
+            prepared: list[dict[str, Any]] = []
+            all_records: list[dict[str, Any]] = []
+            vector_batch: list[str] = []
+            id_hashes: set[str] = {
+                MedicalTextCleaner.compute_hash(str(row.get("raw_text") or row.get("diagnostic_summary") or ""))
+                for row in json.loads((ROOT / "data" / "processed" / "metadata.json").read_text(encoding="utf-8"))
+                if row.get("raw_text") or row.get("diagnostic_summary")
+            }
+            batch_size = 128
+            accepted = 0
+
+            def flush() -> None:
+                nonlocal accepted
+                if not prepared:
+                    return
+                vectors = engine.embedder.encode(vector_batch, normalize_embeddings=True, show_progress_bar=False)
+                if vectors.shape[1] != 384:
+                    raise ValueError(f"Expected 384-D vectors, received {vectors.shape[1]} dimensions.")
+                for record, vector in zip(prepared, vectors):
+                    nearest = engine.faiss_index.search_box(vector, top_k=1)
+                    match = nearest[0] if nearest else {"box_id": 0, "label": "General clinical records", "similarity_score": 0.0}
+                    record["box_id"] = int(match["box_id"])
+                    record["box_label"] = str(match.get("label", f"Clinical box {record['box_id'] + 1}"))
+                    record["box_similarity"] = round(float(match.get("similarity_score", 0)), 4)
+                    record["embedding"] = vector.astype(float).tolist()
+                    record["priority_score"] = round(engine.priority_engine.compute_priority_score(1.0, 0.0, 0.65), 4)
+                accepted += len(prepared)
+                all_records.extend(prepared)
+                _set_dataset_import(record_count=accepted)
+                prepared.clear()
+                vector_batch.clear()
+
+            for index, relative in enumerate(entries, start=1):
+                path = selected_root / relative
+                digest = hashlib.sha1(relative.replace("\\", "/").casefold().encode("utf-8")).hexdigest()[:16]
+                doc_id = f"phase2-{digest}"
+                if doc_id in existing_ids:
+                    _set_dataset_import(processed=index, record_count=accepted)
+                    continue
+                try:
+                    if path.suffix.lower() in {".csv", ".tsv"}:
+                        import pandas as pd
+                        frame = pd.read_csv(path, dtype=str, sep="\t" if path.suffix.lower() == ".tsv" else ",", nrows=500).fillna("")
+                        rows = frame.to_dict(orient="records")
+                    else:
+                        rows, _method = _read_source(path.name, path.read_bytes())
+                    for row_index, source_row in enumerate(rows, start=1):
+                        raw_text = source_row.get("raw_text") or source_row.get("text") or _flatten_row(source_row)
+                        raw_text = MedicalTextCleaner.clean_text(str(raw_text))
+                        if not raw_text:
+                            continue
+                        text_hash = MedicalTextCleaner.compute_hash(raw_text)
+                        if text_hash in id_hashes:
+                            continue
+                        id_hashes.add(text_hash)
+                        title = _pick(source_row, ("title", "report_title", "document_title", "name")) or path.stem
+                        specialty = _pick(source_row, ("specialty", "category", "department", "diagnosis")) or "Clinical report"
+                        summary = ClinicalSectionParser.build_diagnostic_summary(raw_text, title=title, category=specialty)
+                        fingerprint = _fingerprint(raw_text)
+                        row_patient = _pick(source_row, ("patient_name", "patient", "name", "full_name"))
+                        if not row_patient:
+                            first = _pick(source_row, ("firstname", "first_name"))
+                            last = _pick(source_row, ("lastname", "last_name"))
+                            row_patient = f"{first} {last}".strip()
+                        if row_patient:
+                            fingerprint["patient_name"] = row_patient
+                        if fingerprint["patient_name"] == "Not found":
+                            fingerprint["patient_name"] = _patient_from_filename(path.name) or "Not found"
+                        if len(rows) > 1 and title == path.stem and fingerprint["patient_name"] != "Not found":
+                            title = f"{fingerprint['patient_name']} · Medical report"
+                        row_id = doc_id if len(rows) == 1 else f"{doc_id}-{row_index}"
+                        prepared.append({
+                            "doc_id": row_id, "title": title, "specialty": specialty, "raw_text": raw_text,
+                            "full_text": raw_text, "snippet": raw_text[:300], "diagnostic_summary": summary,
+                            "source_filename": f"Phase 2 dataset/{relative.replace(chr(92), '/')}", "job_id": "phase2-dataset",
+                            "box_id": 0, "cosine_similarity": 0.0, "priority_score": 0.0, **fingerprint,
+                        })
+                        vector_batch.append(summary)
+                        if len(prepared) >= batch_size:
+                            flush()
+                except Exception:
+                    # A damaged or unsupported individual document should not stop the corpus import.
+                    pass
+                if index % batch_size == 0:
+                    _set_dataset_import(processed=index, record_count=accepted)
+            flush()
+
+            records = all_records
+            if records:
+                _publish_records(records)
+                import duckdb
+                DUCKDB_PATH.parent.mkdir(parents=True, exist_ok=True)
+                connection = duckdb.connect(str(DUCKDB_PATH))
+                connection.execute("""CREATE TABLE IF NOT EXISTS uploaded_reports (
+                    doc_id VARCHAR PRIMARY KEY, job_id VARCHAR, source_filename VARCHAR, title VARCHAR,
+                    specialty VARCHAR, patient_name VARCHAR, age INTEGER, conditions VARCHAR, box_id INTEGER,
+                    diagnostic_summary VARCHAR, raw_text VARCHAR, embedding_json VARCHAR, ingested_at TIMESTAMP
+                )""")
+                connection.executemany("""INSERT OR REPLACE INTO uploaded_reports
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, current_timestamp)""", [
+                    (r["doc_id"], "phase2-dataset", r["source_filename"], r["title"], r["specialty"], r.get("patient_name", "Not found"), r.get("age"), json.dumps(r.get("conditions", [])), r["box_id"], r["diagnostic_summary"], r["raw_text"], json.dumps(r["embedding"])) for r in records
+                ])
+                connection.close()
+            _set_dataset_import(status="complete", processed=len(entries), total=len(entries), record_count=len(records), completed_at=_now(), error=None)
+    except Exception as exc:
+        _set_dataset_import(status="failed", error=str(exc), failed_at=_now())
 
 
 def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
@@ -187,11 +354,11 @@ def _read_source(filename: str, content: bytes) -> tuple[list[dict[str, Any]], s
         return [{"raw_text": "\n".join(parts), "title": Path(filename).stem}], "DOCX text + tables"
     if suffix in {".csv", ".tsv", ".xlsx"}:
         import pandas as pd
-        frame = pd.read_excel(io.BytesIO(content), dtype=str).fillna("") if suffix == ".xlsx" else pd.read_csv(io.BytesIO(content), dtype=str, sep="\t" if suffix == ".tsv" else ",").fillna("")
-        rows = frame.head(500).to_dict(orient="records")
+        frame = pd.read_excel(io.BytesIO(content), dtype=str).fillna("") if suffix == ".xlsx" else pd.read_csv(io.BytesIO(content), dtype=str, sep="\t" if suffix == ".tsv" else ",", nrows=500).fillna("")
+        rows = frame.to_dict(orient="records")
         if not rows:
             raise ValueError("No data rows were found in this file.")
-        return rows, f"{suffix[1:].upper()} · {len(frame):,} rows" + (" · first 500 queued" if len(frame) > 500 else "")
+        return rows, f"{suffix[1:].upper()} · first {len(frame):,} rows loaded"
     if suffix in {".json", ".jsonl"}:
         decoded = content.decode("utf-8-sig")
         if suffix == ".jsonl":
@@ -231,7 +398,7 @@ def _run_paddle(content: bytes, suffix: str) -> str:
 
 
 def _clean_patient_name(value: str) -> str:
-    value = re.split(r"\s*(?:\||\b(?:lab\s*no\.?|age|gender|reported|collected|ref\.?\s*by)\b)", value, maxsplit=1, flags=re.IGNORECASE)[0]
+    value = re.split(r"\s*(?:\||\b(?:lab\s*no\.?|age|gender|sex|reported|collected|reg(?:istration)?\s*date|report(?:ed)?\s*date|date\s*of\s*birth|dob|ref\.?\s*by|diabetes|thyroid|cardiac|risk|full\s*body|checkup|kidney|liver|function|anemia|workup|panel|clinical|medical|report)\b)", value, maxsplit=1, flags=re.IGNORECASE)[0]
     value = re.sub(r"^(?:mr|mrs|ms|miss|dr)\.?\s+", "", value.strip(), flags=re.IGNORECASE)
     value = re.sub(r"[^A-Za-z'’ -]", " ", value)
     words = value.split()
@@ -296,7 +463,7 @@ def _patient_from_filename(filename: str) -> str:
     stem = Path(filename).stem
     stem = re.sub(r"(?:[_-](?:M|F|MALE|FEMALE))?[_-]\d{1,3}[_-]Yrs?\b.*$", "", stem, flags=re.IGNORECASE)
     stem = re.sub(r"[_-](?:\d{8,}|\d{4}[-_]\d{2}[-_]\d{2}).*$", "", stem)
-    stem = re.sub(r"\b(?:report|medical|patient|scan|final|copy)\b", " ", stem, flags=re.IGNORECASE)
+    stem = re.sub(r"\b(?:report|medical|patient|scan|final|copy|diabetes|thyroid|cardiac|risk|full|body|checkup|kidney|liver|function|anemia|workup|panel|clinical)\b.*$", " ", stem, flags=re.IGNORECASE)
     words = re.findall(r"[A-Za-z][A-Za-z'-]*", stem.replace("_", " ").replace("-", " "))
     if words and words[0].casefold() in {"mr", "mrs", "ms", "miss", "dr"}:
         words = words[1:]

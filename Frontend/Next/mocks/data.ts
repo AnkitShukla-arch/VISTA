@@ -38,5 +38,6 @@ export const metrics: Metrics = {
   silhouette: .0443, davies_bouldin: 3.6719, calinski_harabasz: 19.62, specialty_purity: .955,
   k_sweep: sweep,
   box_specialty: boxes.flatMap((b) => [{ box:b.label, specialty:documents.find(d=>d.box_id===b.box_id)?.specialty ?? "General", count:b.doc_count }]),
+  problem_counts: ["cardiac", "hypertension", "diabetes", "asthma", "kidney", "cancer"].map((problem, i) => ({ problem, count: [180, 146, 132, 74, 61, 45][i] })),
   similarity_matrix_40x40: Array.from({ length:40 }, (_, y) => Array.from({ length:40 }, (_, x) => +Math.max(0,Math.min(1,.15 + .72 * Math.exp(-Math.abs(x-y)/4) + Math.sin(x*4+y*11)*.09)).toFixed(2))),
 };

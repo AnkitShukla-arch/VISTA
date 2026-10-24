@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type FormEvent } from "react";
 import { Activity, ArrowRight, BrainCircuit, Check, ChevronDown, CircleAlert, Database, FileText, LoaderCircle, Search, Upload, Workflow } from "lucide-react";
-import { askWarehouse, createIngestionJob, getHealth, getIngestionJob, getIngestionJobs } from "@/lib/api";
-import type { IngestionJob, VistaHealth, WarehouseQuery } from "@/lib/types";
+import { askWarehouse, createIngestionJob, getDatasetImport, getHealth, getIngestionJob, getIngestionJobs, startDatasetImport } from "@/lib/api";
+import type { DatasetImport, IngestionJob, VistaHealth, WarehouseQuery } from "@/lib/types";
 
 const phases = [
   { id: "phase1", label: "Ingest & extract", detail: "OCR · ETL", icon: Upload },
@@ -53,13 +53,25 @@ export function PipelineDashboard() {
   const [query, setQuery] = useState<WarehouseQuery | null>(null);
   const [queryError, setQueryError] = useState("");
   const [querying, setQuerying] = useState(false);
+  const [datasetImport, setDatasetImport] = useState<DatasetImport | null>(null);
+  const [importStarting, setImportStarting] = useState(false);
   const [health, setHealth] = useState<VistaHealth | null>(null);
   const fileInput = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getIngestionJobs().then(setJobs).catch(() => undefined);
     getHealth().then(setHealth).catch(() => setHealth(null));
+    getDatasetImport().then(setDatasetImport).catch(() => undefined);
   }, []);
+
+  useEffect(() => {
+    if (datasetImport?.status !== "queued" && datasetImport?.status !== "running") return;
+    const timer = window.setInterval(() => getDatasetImport().then((fresh) => {
+      setDatasetImport(fresh);
+      if (fresh.status === "complete") getHealth().then(setHealth).catch(() => undefined);
+    }).catch(() => undefined), 1600);
+    return () => window.clearInterval(timer);
+  }, [datasetImport?.status]);
 
   useEffect(() => {
     const activeJobs = jobs.filter((job) => job.status === "queued" || job.status === "running");
@@ -116,6 +128,14 @@ export function PipelineDashboard() {
     finally { setQuerying(false); }
   };
 
+  const importDataset = async () => {
+    if (importStarting || datasetImport?.status === "running" || datasetImport?.status === "queued") return;
+    setImportStarting(true);
+    try { setDatasetImport(await startDatasetImport()); }
+    catch (error) { setUploadError(error instanceof Error ? error.message : "Could not start the Phase 2 dataset import."); }
+    finally { setImportStarting(false); }
+  };
+
   return <div className="page pipeline-page">
     <header className="pipeline-page-heading">
       <div><span className="eyebrow">VISTA WORKSPACE</span><h1>Bring a report into VISTA</h1><p>Upload clinical data. VISTA extracts, fingerprints, embeds, and files it for semantic search.</p></div>
@@ -132,6 +152,19 @@ export function PipelineDashboard() {
           <span className="phase-card-detail">{phase.detail}</span>
         </div>;
       })}
+    </section>
+
+    <section className="card dataset-import-card">
+      <div><span className="eyebrow">LOCAL DATASET</span><h2>Import the Phase 2 report collection</h2><p>Batch process the prepared dataset manifest on this machine. The source files stay in the dataset folder.</p></div>
+      <div className="dataset-import-action">
+        <button type="button" onClick={importDataset} disabled={importStarting || datasetImport?.status === "running" || datasetImport?.status === "queued" || datasetImport?.status === "complete"}>
+          {datasetImport?.status === "running" || datasetImport?.status === "queued" ? <><LoaderCircle size={15} className="pipeline-spin" /> Importing</> : datasetImport?.status === "complete" ? <><Check size={15} /> Imported</> : importStarting ? <><LoaderCircle size={15} className="pipeline-spin" /> Starting</> : <>Import Phase 2 dataset <ArrowRight size={15} /></>}
+        </button>
+        {datasetImport && <span className={`dataset-import-status ${datasetImport.status === "failed" ? "is-error" : ""}`}>
+          {datasetImport.status === "complete" ? `${datasetImport.record_count.toLocaleString()} reports indexed` : datasetImport.status === "failed" ? datasetImport.error : datasetImport.status === "running" || datasetImport.status === "queued" ? `${datasetImport.processed.toLocaleString()} / ${datasetImport.total.toLocaleString()} files · ${datasetImport.record_count.toLocaleString()} reports ready` : "Uses phase1_selection.txt"}
+        </span>}
+      </div>
+      {(datasetImport?.status === "running" || datasetImport?.status === "queued") && <div className="dataset-import-progress"><i style={{ width: `${datasetImport.total ? Math.round(datasetImport.processed / datasetImport.total * 100) : 0}%` }} /></div>}
     </section>
 
     <div className="pipeline-content-grid">

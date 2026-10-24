@@ -75,7 +75,8 @@ def _box_data() -> list[dict[str, Any]]:
     return result
 
 
-def _documents() -> list[dict[str, Any]]:
+@lru_cache(maxsize=1)
+def _base_documents() -> list[dict[str, Any]]:
     rows = _read_json(PROCESSED / "metadata.json", [])
     labels_path = CLUSTERING / "cluster_labels.npy"
     labels = np.load(labels_path).tolist() if labels_path.exists() else []
@@ -88,6 +89,14 @@ def _documents() -> list[dict[str, Any]]:
         if box_id is None:
             box_id = assignments.get(str(index), 0)
         text = row.get("raw_text") or row.get("diagnostic_summary") or ""
+        try:
+            from Backend.ingestion import _fingerprint, _patient_from_filename
+            fingerprint = _fingerprint(str(text))
+            patient_name = fingerprint["patient_name"]
+            if patient_name == "Not found":
+                patient_name = _patient_from_filename(str(row.get("title") or row.get("doc_id") or "")) or "Not found"
+        except Exception:
+            fingerprint, patient_name = {"conditions": [], "age": None}, "Not found"
         result.append({
             "doc_id": str(row.get("doc_id", f"report-{index + 1}")),
             "title": str(row.get("title") or row.get("doc_id") or f"Clinical report {index + 1}"),
@@ -97,13 +106,21 @@ def _documents() -> list[dict[str, Any]]:
             "priority_score": 0.0,
             "snippet": text[:300],
             "full_text": text,
+            "patient_name": patient_name, "age": fingerprint.get("age"), "conditions": fingerprint.get("conditions", []),
         })
+    return result
+
+
+def _documents() -> list[dict[str, Any]]:
+    result = [dict(row) for row in _base_documents()]
     try:
-        from Backend.ingestion import _patient_from_filename, _patient_from_text, uploaded_records
+        from Backend.ingestion import _clean_patient_name, _patient_from_filename, _patient_from_text, uploaded_records
         for row in uploaded_records():
             patient_name = row.get("patient_name")
             if not patient_name or patient_name == "Not found":
                 patient_name = _patient_from_text(str(row.get("raw_text") or "")) or _patient_from_filename(str(row.get("source_filename") or row.get("title") or "")) or "Not found"
+            if patient_name != "Not found":
+                patient_name = _clean_patient_name(str(patient_name)) or patient_name
             patient_name = re.sub(r"^(?:mr|mrs|ms|miss|dr)\.?\s+", "", str(patient_name), flags=re.IGNORECASE).strip()
             title = str(row["title"])
             source_filename = str(row.get("source_filename") or "")
@@ -188,6 +205,21 @@ def health():
         "box_count": len(_box_data()),
         "embedding_dimension": 384,
     }
+
+
+@app.get("/dataset/import")
+def dataset_import_status():
+    from Backend.ingestion import get_dataset_import
+    return get_dataset_import()
+
+
+@app.post("/dataset/import")
+def start_phase2_dataset_import():
+    from Backend.ingestion import start_dataset_import
+    try:
+        return start_dataset_import()
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @app.post("/search")
@@ -318,6 +350,15 @@ def get_document(doc_id: str):
     return doc
 
 
+@app.get("/documents/{doc_id}/lab-results")
+def get_document_lab_results(doc_id: str):
+    doc = next((row for row in _documents() if row["doc_id"] == doc_id), None)
+    if doc is None:
+        raise HTTPException(status_code=404, detail="Document not found")
+    from Backend.OCR.lab_results import parse_lab_results
+    return parse_lab_results(str(doc.get("full_text") or ""))
+
+
 @app.get("/projection")
 def get_projection():
     path = CLUSTERING / "pca_projection.npy"
@@ -337,6 +378,19 @@ def get_metrics():
     k_sweep = [{"k": k, "silhouette": score, "inertia": inertias.get(k, 0.0)} for k, score in scores.items()]
     docs = _documents()
     grouped: Counter[tuple[int, str]] = Counter((d["box_id"], d["specialty"]) for d in docs)
+    problem_counts: Counter[str] = Counter()
+    for doc in docs:
+        conditions = doc.get("conditions") or []
+        if not conditions:
+            try:
+                from Backend.ingestion import _fingerprint
+                conditions = _fingerprint(str(doc.get("full_text", ""))).get("conditions", [])
+            except Exception:
+                conditions = []
+        for condition in set(conditions):
+            if condition:
+                label = "normal" if condition == "No common finding detected" else str(condition)
+                problem_counts[label] += 1
     box_names = {b["box_id"]: b["label"] for b in _box_data()}
     box_specialty = [{"box": box_names.get(box_id, f"Box {box_id}"), "specialty": specialty, "count": count} for (box_id, specialty), count in grouped.items()]
     matrix_path = PROCESSED / "similarity_matrix.npy"
@@ -346,4 +400,5 @@ def get_metrics():
         "silhouette": float(raw.get("silhouette_score", 0)), "davies_bouldin": float(raw.get("davies_bouldin_score", 0)),
         "calinski_harabasz": float(raw.get("calinski_harabasz_score", 0)), "specialty_purity": float(raw.get("specialty_purity", 0)),
         "k_sweep": k_sweep, "box_specialty": box_specialty, "similarity_matrix_40x40": sample,
+        "problem_counts": [{"problem": key, "count": value} for key, value in problem_counts.most_common()],
     }

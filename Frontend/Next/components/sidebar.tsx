@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Activity, ChevronLeft, ChevronRight, Files, Search, Settings2, Shapes, Stethoscope, Upload } from "lucide-react";
+import { Activity, BarChart3, ChevronLeft, ChevronRight, Files, Search, Settings2, Shapes, Stethoscope, Upload } from "lucide-react";
 import { getBoxes } from "@/lib/api";
 import { boxes as defaults } from "@/mocks/data";
 import type { Box } from "@/lib/types";
@@ -19,6 +19,7 @@ const technicianLinks = [
 const doctorLinks = [
   { href: "/doctor", label: "Clinical workspace", Icon: Stethoscope },
   { href: "/doctor/reports", label: "Reports", Icon: Files },
+  { href: "/doctor/analytics", label: "Analysis", Icon: BarChart3 },
 ];
 
 function BrandMark() {

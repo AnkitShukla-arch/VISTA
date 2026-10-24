@@ -7,7 +7,7 @@ import { PreviewDrawer } from "@/components/preview-drawer";
 import type { ClinicalDocument } from "@/lib/types";
 
 const PAGE_SIZE=12;
-export default function DocumentsPage({doctorMode=false}:{doctorMode?:boolean}){
+function DocumentsView({doctorMode=false}:{doctorMode?:boolean}){
   const [items,setItems]=useState<ClinicalDocument[]>([]);const [total,setTotal]=useState(0);const [q,setQ]=useState("");const [box,setBox]=useState("");const [specialty,setSpecialty]=useState("");const [page,setPage]=useState(1);const [sort,setSort]=useState<"title"|"specialty"|"doc_id">("title");const [asc,setAsc]=useState(true);const [preview,setPreview]=useState<ClinicalDocument|null>(null);
   const [dense,setDense]=useState(true);
   useEffect(()=>{const timer=setTimeout(()=>{getDocuments({box,specialty,q,page,page_size:PAGE_SIZE}).then(r=>{setItems(r.items);setTotal(r.total)})},180);return()=>clearTimeout(timer)},[box,specialty,q,page]);
@@ -23,3 +23,5 @@ export default function DocumentsPage({doctorMode=false}:{doctorMode?:boolean}){
     <PreviewDrawer doc={preview} onClose={()=>setPreview(null)}/>
   </div>
 }
+
+export default function DocumentsPage(){ return <DocumentsView />; }

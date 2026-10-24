@@ -1,5 +1,5 @@
-import DocumentsPage from "@/app/documents/page";
+import { DoctorReports } from "@/components/doctor-reports";
 
 export default function DoctorReportsPage() {
-  return <DocumentsPage doctorMode />;
+  return <DoctorReports />;
 }
