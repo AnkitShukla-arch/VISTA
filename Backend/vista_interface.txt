@@ -1,0 +1,67 @@
+Build the frontend for "VISTA", a semantic search engine for medical reports. Make it a polished, modern web app that looks simple, calm, and attractive. It should feel like a premium clinical tool, not a student project.
+
+## What VISTA does
+Doctors type a natural-language query such as "heart attack with elevated troponin". Instead of keyword matching, the backend embeds the query (all-MiniLM-L6-v2, 384-D) and finds the closest semantic "box" using a FAISS index. A box is a K-Means cluster of similar reports, for example "Cardiology case reports". There are about 12 boxes covering about 1,000 MTSamples clinical reports. Documents inside the matched box(es) are then ranked by a priority score (freshness + access frequency + importance). The target response time is under 2 seconds.
+
+## Tech stack
+- Next.js (App Router) + TypeScript + Tailwind CSS
+- shadcn/ui for components, lucide-react for icons
+- Recharts for standard charts, plus Plotly (or deck.gl / visx) for the interactive PCA scatter
+- Framer Motion for subtle transitions
+- Font: Inter (headings: Inter semibold, tight tracking)
+
+## Data layer
+Create a typed API client (`/lib/api.ts`) that calls these REST endpoints. Build them against realistic mock data first (a `/mocks` folder) so the UI works immediately, and make switching to the real backend a single env variable (`NEXT_PUBLIC_API_URL`).
+- `POST /search {query, top_k}` returns `{ matched_boxes: [{box_id, label, similarity, keywords[]}], documents: [{doc_id, title, specialty, box_id, cosine_similarity, priority_score, snippet}], latency_ms }`
+- `GET /boxes` returns `[{box_id, label, doc_count, keywords[], color}]`
+- `GET /boxes/{id}/documents`
+- `GET /documents?box=&specialty=&q=&page=` and `GET /documents/{id}` (full text)
+- `GET /projection` returns `[{doc_id, x, y, box_id, title, specialty}]` (2-D PCA of all reports)
+- `GET /metrics` returns `{silhouette, davies_bouldin, calinski_harabasz, specialty_purity, k_sweep: [{k, silhouette, inertia}], box_specialty: [{box, specialty, count}], similarity_matrix_40x40}`
+
+## Design system
+- Aesthetic: "clinical workstation", in the spirit of Linear / Notion / Vercel. Calm, spacious, dense-but-clear.
+- Light theme by default with a dark-mode toggle. Background #FAFAFA, surfaces white, borders 1px #E5E7EB, text slate-900 / slate-500.
+- ONE accent color: a medical teal/blue (#0EA5A4 or #2563EB). Use it only for primary actions, focus rings, and key highlights.
+- The 12 box colors should be a soft, harmonious categorical palette (muted, not neon), used only for box tags and the scatter plot.
+- No gradients, no heavy shadows. Use subtle shadows (shadow-sm), 12px rounded corners, generous whitespace, and a consistent 8px spacing grid.
+- Micro-interactions: smooth hover states, skeleton loaders (never spinners on blank screens), fade/slide-in for result cards (stagger by 40ms), animated number count-ups on metric cards.
+- Fully responsive (desktop first, good on tablet/mobile) with accessible contrast, visible focus states, and keyboard navigation.
+
+## Layout
+Left collapsible sidebar with the VISTA logo (simple wordmark plus a small icon) and 4 nav items: Search, Box Explorer, Analytics, Documents. A slim top bar holds a global search shortcut (Cmd/Ctrl+K) and a theme toggle.
+
+## Pages
+
+### 1. Search (home page, the hero of the app)
+- Empty state: a large centered search bar with the headline "Search medical reports by meaning", a one-line subtitle, and 5-6 clickable example chips ("heart attack with elevated troponin", "knee pain after sports injury", "pediatric asthma exacerbation"...).
+- After searching, the bar moves to the top and the page becomes a split view:
+  - Left (about 60%): "Matched boxes" as compact cards (label, keyword chips, similarity score as a progress bar), then ranked document result cards grouped under their box. Each card shows title, a specialty badge, a snippet with the query-relevant words subtly highlighted, a cosine-similarity bar, and a priority-score bar. Clicking a card selects it.
+  - Right (about 40%, sticky): a document preview panel with full text, metadata, and the box it belongs to.
+- A latency pill near the results ("Found in 0.34s", green when under the 2s target, amber otherwise) with a tooltip explaining the target.
+- Include loading skeletons, a friendly no-results state, and a recent-searches dropdown.
+
+### 2. Box Explorer
+- A large interactive 2-D PCA scatter of all ~1,000 reports, colored by box. Support hover tooltips (title and specialty), click to select a point and open the document preview drawer, zoom/pan, and clicking a legend item to isolate that box.
+- A sidebar box directory listing each box with its color dot, label, doc count, and keyword tags. Clicking a box highlights it on the map and lists its documents.
+- A small horizontal bar chart of box sizes.
+
+### 3. Analytics
+- A row of metric cards: Silhouette, Davies-Bouldin, Calinski-Harabasz, Specialty Purity (95.5%), each with a one-line plain-English explanation on hover (info icon).
+- K-sweep line chart (silhouette and inertia versus K, with the chosen K highlighted).
+- Sunburst (or Sankey) showing box-to-specialty relationships.
+- 40x40 cosine-similarity heatmap with a tooltip and a clean sequential color scale.
+- Arrange these in a tidy responsive grid with consistent card styling.
+
+### 4. Document Browser
+- A clean data table with sticky header, filters (box, specialty, free text), sorting, and pagination.
+- Clicking a row opens a right-side drawer with the full report text and metadata.
+
+## Quality bar
+- Component-based architecture with reusable pieces (SearchBar, BoxCard, ResultCard, MetricCard, PreviewDrawer, ScatterMap).
+- Everything typed. No hard-coded data inside components.
+- Include a README with setup steps, how to point to the real FastAPI backend, and a note on adding CORS.
+- Also provide a minimal FastAPI wrapper (`api.py`) around `VISTARetrievalEngine.search(query)` that exposes the endpoints above.
+- Prioritize visual polish: alignment, spacing, typography hierarchy, and consistent states. Fewer elements done beautifully beat many elements done roughly.
+
+Start by outputting the project structure and design tokens (Tailwind config), then build the Search page fully, then the remaining pages.

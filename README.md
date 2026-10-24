@@ -155,21 +155,50 @@ python project/code/sync_result_to_minio.py
 
 ## ⚡ Embeddings, Clustering & Search Pipeline
 
-### 1. Embeddings & Cosine Similarity Math
+### 1. Embeddings & Cosine Similarity Math (Phases 2–3)
 ```bash
 # Vectorize reports into 384-D dense vectors and compute similarity matrix:
-python Backend/Embeddings/pipeline.py --sample-size 50
+python Backend/Embeddings/pipeline.py --sample-size 1000
 ```
 
-### 2. Verify Output Correctness
+### 2. K-Means Box Clustering + FAISS Box Index (Phase 4)
 ```bash
-python tests/verify_output.py
+# Consumes the Phase 2/3 cache; selects K via silhouette sweep (--auto-k)
+# and exports the full box layer to data/clustering/:
+python Backend/Clustering/pipeline.py --auto-k
 ```
 
-### 3. Frontend Search Dashboard
+> Measured on 1,000 real MTSamples reports: **12 semantic boxes, specialty purity 95.5%**, box-level FAISS index of just 12 vectors instead of 1,000 document vectors.
+
+### 3. End-to-End Semantic Retrieval
+```python
+from Backend.Clustering.retrieval_engine import VISTARetrievalEngine
+
+engine = VISTARetrievalEngine.from_default_paths()
+result = engine.search("elevated troponin, acute myocardial infarction", top_boxes=2)
+```
+
+### 4. Verify Output Correctness
+```bash
+python tests/verify_output.py            # Phases 2-3 bundle audit
+python tests/test_phase4_clustering.py   # Phase 4 clustering audit
+```
+
+### 5. NLP Dashboard (Streamlit)
 ```bash
 streamlit run Frontend/Streamlit/app.py
 ```
+
+The Next.js workspace in `Frontend/Next/` opens with a role chooser. The Technician workspace includes ingestion, OCR/ETL, clinical fingerprinting, 384-D embeddings, semantic box assignment, storage, analytics, and document tools. The Doctor workspace provides patient and condition search, a report collection, and report previews. Start FastAPI with `python -m uvicorn Backend.api:app --reload --port 8000`, set `NEXT_PUBLIC_API_URL=http://127.0.0.1:8000` in `Frontend/Next/.env.local`, and run `npm.cmd run dev` from `Frontend/Next`.
+
+Dashboard routes:
+- **Role chooser** ? `/`
+- **Technician workspace** ? `/technician`
+- **Doctor workspace and reports** ? `/doctor` and `/doctor/reports`
+- **🔍 Semantic Search** — natural-language query → FAISS box match → priority-ranked documents with latency vs. the < 2s target
+- **📦 Box Explorer** — 2-D PCA map of the corpus colored by semantic box, per-box labels/keywords/members
+- **📊 Cluster Analytics** — silhouette / Davies-Bouldin / Calinski-Harabasz / specialty purity, K-sweep chart, box↔specialty sunburst, similarity heatmap
+- **📁 Document Browser** — full corpus table with box/specialty filters and text previews
 
 ---
 
@@ -179,7 +208,7 @@ streamlit run Frontend/Streamlit/app.py
 VISTA
 ├── Backend/
 │   ├── Embeddings/           # Sentence Transformer + cosine similarity math
-│   ├── Clustering/           # K-Means box logic, box summaries, FAISS index
+│   ├── Clustering/           # Phase 4: K-Means boxes, box summaries, FAISS index, retrieval engine
 │   ├── ETL/                  # Cleaning, deduplication, error removal
 │   └── OCR/                  # Document parsing and extraction
 ├── project/code/
@@ -193,7 +222,10 @@ VISTA
 │   ├── Neon/                 # Structured metadata warehouse
 │   └── DuckDB/               # Metadata analytics + priority scoring
 ├── Frontend/
-│   └── Streamlit/            # UI components and diagnostic dashboard
+│   └── Streamlit/            # NLP dashboard: semantic search, box explorer, cluster analytics
+├── data/
+│   ├── processed/            # Phase 2/3 handoff bundle (embeddings, similarity, graph)
+│   └── clustering/           # Phase 4 artifacts (box index, labels, metrics, projection)
 ├── info/
 │   ├── architecture.png      # System architecture diagram
 │   └── DOCUMENTATION.md      # Comprehensive technical documentation

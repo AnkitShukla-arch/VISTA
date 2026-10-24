@@ -81,5 +81,9 @@ class Settings:
         "DATA_LAKE_DIR", "phase1_dataset/phase1_dataset/Full_Medical_Data_Lake"
     )
 
+    # Pipeline Artifact Directories
+    DATA_PROCESSED_DIR: Path = BASE_DIR / os.getenv("DATA_PROCESSED_DIR", "data/processed")
+    DATA_CLUSTERING_DIR: Path = BASE_DIR / os.getenv("DATA_CLUSTERING_DIR", "data/clustering")
+
 
 settings = Settings()

@@ -105,6 +105,12 @@ scratch/
 .project
 .pydevproject
 
+# --- Next.js dashboard ---
+node_modules/
+.next/
+*.tsbuildinfo
+Frontend/Next/.env.local
+
 # --- OS Specific Files ---
 .DS_Store
 .DS_Store?
