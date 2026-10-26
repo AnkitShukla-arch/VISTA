@@ -16,6 +16,14 @@ Open [http://localhost:3000](http://localhost:3000). The local `.env.local` poin
 
 ## Connect the VISTA API
 
+## Deploy the connected application
+
+The Next.js frontend and Python API run as separate services. Deploy `Frontend/Next/` to Vercel and set `NEXT_PUBLIC_API_URL` to the public HTTPS URL of the API service. Deploy the repository root to Render using the root `render.yaml` Blueprint. In Render, set `NEON_DATABASE_URL` to the Neon PostgreSQL connection string and `VISTA_CORS_ORIGINS` to the exact Vercel production origin, such as `https://your-project.vercel.app` (no trailing slash). Add preview origins only when needed.
+
+Set the `MINIO_ENDPOINT`, `MINIO_ACCESS_KEY`, and `MINIO_SECRET_KEY` Render environment variables to a reachable TLS-enabled MinIO service if uploaded originals should persist outside the API's local disk. The Render disk keeps generated artifacts and local uploads between deploys, but it starts empty: copy `data/processed/` and `data/clustering/` artifacts to that disk before using semantic search. These artifacts are git-ignored and are not included in a normal Vercel or Render build. Verify `/health` reports `artifacts_ready: true` and `database_status: connected` before demoing.
+
+The API currently has no user authentication. Use only public or de-identified demo data until authentication and access controls are implemented; do not expose patient-identifiable records on a public deployment.
+
 From the repository root, start the FastAPI wrapper:
 
 ```powershell

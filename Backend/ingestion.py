@@ -37,10 +37,23 @@ _jobs_lock = threading.RLock()
 _pipeline_lock = threading.Lock()
 _jobs: dict[str, dict[str, Any]] = {}
 _records: list[dict[str, Any]] = []
+_warehouse_manager = None
 _dataset_import: dict[str, Any] = {
     "status": "idle", "processed": 0, "total": 0, "record_count": 0,
     "filename": "phase1_selection.txt", "error": None,
 }
+
+
+def _warehouse():
+    global _warehouse_manager
+    from config.settings import settings
+
+    if not settings.NEON_DATABASE_URL:
+        return None
+    if _warehouse_manager is None:
+        from Database.Neon.connection import NeonWarehouseManager
+        _warehouse_manager = NeonWarehouseManager(settings.NEON_DATABASE_URL)
+    return _warehouse_manager
 
 
 def _now() -> str:
@@ -67,6 +80,9 @@ def _save_job(job: dict[str, Any]) -> None:
         job["updated_at"] = _now()
         _jobs[job["job_id"]] = job
         _write_json_atomic(JOB_ROOT / f"{job['job_id']}.json", job)
+    warehouse = _warehouse()
+    if warehouse:
+        warehouse.upsert_job(job)
 
 
 def _load_saved_state() -> None:
@@ -126,7 +142,11 @@ def create_job(filename: str, content: bytes) -> dict[str, Any]:
 def get_job(job_id: str) -> dict[str, Any] | None:
     with _jobs_lock:
         job = _jobs.get(job_id)
-        return _public_job(job) if job else None
+        if job:
+            return _public_job(job)
+    warehouse = _warehouse()
+    job = warehouse.get_job(job_id) if warehouse else None
+    return _public_job(job) if job else None
 
 
 def get_dataset_import() -> dict[str, Any]:
@@ -288,14 +308,24 @@ def _run_dataset_import(selected_root: Path, entries: list[str]) -> None:
 def list_jobs(limit: int = 20) -> list[dict[str, Any]]:
     with _jobs_lock:
         jobs = sorted(_jobs.values(), key=lambda item: item.get("created_at", ""), reverse=True)[:limit]
-        return [_public_job(job) for job in jobs]
+    warehouse = _warehouse()
+    if warehouse:
+        by_id = {job["job_id"]: job for job in warehouse.load_jobs(limit)}
+        by_id.update({job["job_id"]: job for job in jobs})
+        jobs = sorted(by_id.values(), key=lambda item: item.get("updated_at", ""), reverse=True)[:limit]
+    return [_public_job(job) for job in jobs]
 
 
 def uploaded_records(with_vectors: bool = False) -> list[dict[str, Any]]:
     with _jobs_lock:
-        if with_vectors:
-            return [_public_job(record) for record in _records]
-        return [{key: value for key, value in record.items() if key != "embedding"} for record in _records]
+        records = {record["doc_id"]: record for record in _records}
+    warehouse = _warehouse()
+    if warehouse:
+        records.update({record["doc_id"]: record for record in warehouse.load_reports()})
+    values = [_public_job(record) for record in records.values()]
+    if with_vectors:
+        return values
+    return [{key: value for key, value in record.items() if key != "embedding"} for record in values]
 
 
 def _publish_records(records: list[dict[str, Any]]) -> None:
@@ -304,6 +334,9 @@ def _publish_records(records: list[dict[str, Any]]) -> None:
         ids = {record["doc_id"] for record in records}
         retained = [record for record in _records if record["doc_id"] not in ids]
         retained.extend(records)
+        warehouse = _warehouse()
+        if warehouse:
+            warehouse.upsert_reports(records)
         _write_json_atomic(REGISTRY_PATH, retained)
         _records[:] = retained
 

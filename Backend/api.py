@@ -6,6 +6,7 @@ Run from the repository root with:
 from __future__ import annotations
 
 import json
+import os
 import re
 from collections import Counter
 from functools import lru_cache
@@ -23,9 +24,17 @@ CLUSTERING = ROOT / "data" / "clustering"
 COLORS = ["#59a98b", "#8a9cc4", "#c48c77", "#a68fc0", "#86a865", "#c8a55f", "#65a8b3", "#cc7c8d", "#8399a1", "#a8a46d", "#6d91c1", "#b587a2"]
 
 app = FastAPI(title="VISTA Clinical Search API", version="1.0.0")
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "VISTA_CORS_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000",
+    ).split(",")
+    if origin.strip()
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -198,9 +207,20 @@ def _is_patient_lookup(query: str) -> bool:
 
 @app.get("/health")
 def health():
+    from config.settings import settings
+
+    database_status = "not_configured"
+    if settings.NEON_DATABASE_URL:
+        try:
+            from Backend.ingestion import _warehouse
+            _warehouse().ensure_schema()
+            database_status = "connected"
+        except Exception:
+            database_status = "unavailable"
     return {
         "status": "ok",
         "artifacts_ready": (PROCESSED / "metadata.json").exists() and (CLUSTERING / "box_summaries.json").exists(),
+        "database_status": database_status,
         "document_count": len(_documents()),
         "box_count": len(_box_data()),
         "embedding_dimension": 384,

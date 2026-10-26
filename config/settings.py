@@ -45,7 +45,7 @@ class Settings:
     # Neon PostgreSQL
     NEON_DATABASE_URL: str = os.getenv(
         "NEON_DATABASE_URL",
-        "postgresql://localhost:5432/medicaldb",
+        "",
     )
 
     # DuckDB

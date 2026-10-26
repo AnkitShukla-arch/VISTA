@@ -30,5 +30,5 @@ export type IngestionJob = {
   result: null | { record_count: number; extraction_method: string; embedding_dimension: number; storage: string; warehouse: string; sql_count: number; profiles: IngestionProfile[] };
 };
 export type WarehouseQuery = { question: string; sql: string; result: number; plan: string; source: string };
-export type VistaHealth = { status: string; artifacts_ready: boolean; document_count: number; box_count: number; embedding_dimension: number };
+export type VistaHealth = { status: string; artifacts_ready: boolean; database_status?: "connected" | "not_configured" | "unavailable"; document_count: number; box_count: number; embedding_dimension: number };
 export type DatasetImport = { status: "idle" | "queued" | "running" | "complete" | "failed"; processed: number; total: number; record_count: number; filename: string; error: string | null };

@@ -1,0 +1,30 @@
+services:
+  - type: web
+    name: vista-api
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn Backend.api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
+    disk:
+      name: vista-data
+      mountPath: /opt/render/project/src/data
+      sizeGB: 5
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.9
+      - key: NEON_DATABASE_URL
+        sync: false
+      - key: VISTA_CORS_ORIGINS
+        sync: false
+      - key: MINIO_ENDPOINT
+        sync: false
+      - key: MINIO_ACCESS_KEY
+        sync: false
+      - key: MINIO_SECRET_KEY
+        sync: false
+      - key: MINIO_BUCKET_NAME
+        value: vista-lake
+      - key: MINIO_SECURE
+        value: "true"
+      - key: EMBEDDING_DEVICE
+        value: cpu
